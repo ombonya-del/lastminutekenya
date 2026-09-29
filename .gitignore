@@ -8,3 +8,6 @@ dist-ssr
 .DS_Store
 .vercel
 dev-dist
+
+# Cowork bridge scratch
+Claude outputs/
