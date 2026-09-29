@@ -1,0 +1,32 @@
+{
+  "name": "lastminutekenya",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "LastMinuteKenya — a trust-and-rescue network for event service delivery in Kenya. Installable PWA + Last Minute Network + Site Assessor scorecards.",
+  "scripts": {
+    "dev": "vite",
+    "dev:public": "VITE_APP=public vite",
+    "dev:network": "VITE_APP=network vite",
+    "dev:admin": "VITE_APP=admin vite",
+    "build": "npm run build:public && npm run build:network && npm run build:admin",
+    "build:public": "VITE_APP=public vite build --outDir dist/public",
+    "build:network": "VITE_APP=network vite build --outDir dist/network",
+    "build:admin": "VITE_APP=admin vite build --outDir dist/admin",
+    "preview": "vite preview",
+    "preview:public": "VITE_APP=public vite preview --outDir dist/public --port 4173",
+    "preview:network": "VITE_APP=network vite preview --outDir dist/network --port 4174",
+    "preview:admin": "VITE_APP=admin vite preview --outDir dist/admin --port 4175"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.26.2"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "vite": "^5.4.8",
+    "vite-plugin-pwa": "^0.20.5"
+  }
+}
