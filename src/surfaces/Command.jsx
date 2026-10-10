@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Routes, Route, NavLink, Navigate } from 'react-router-dom'
-import { useStore, sel, assignAssessor, acceptSOS, resolveSOS, clearToast, setProductTitle, setProductPhotos, uploadProductPhoto } from '../data/store.js'
+import { useStore, sel, assignAssessor, acceptSOS, resolveSOS, clearToast, setProductTitle, setProductPhotos, uploadProductPhoto, editProduct, addProduct, retireProduct, restoreProduct } from '../data/store.js'
 import { SHOP_CATEGORIES, MAX_PHOTOS } from '../data/shop.js'
 import { Icon } from '../components/ui.jsx'
 import { matchProviders } from '../lib/matching.js'
@@ -360,33 +360,61 @@ function LinkRow({ onLink, linked }) {
 }
 
 // ---- Shop catalogue manager (admin) ---------------------------------------
+const CATS = SHOP_CATEGORIES.filter((c) => c.id !== 'all')
+
 export function CommandShop() {
   const s = useStore()
   const products = s.products || []
+  const live = products.filter((p) => p.active !== false)
+  const retired = products.filter((p) => p.active === false)
+  const [adding, setAdding] = useState(false)
+
   return (
     <>
-      <H>Shop catalogue</H>
+      <H right={<button className="pub-btn pub-btn-siren pub-btn-sm" onClick={() => setAdding(true)}><Icon name="plus" size={14} /> Add product</button>}>Shop catalogue</H>
       <p className="pub-muted" style={{ margin: '-.3rem 0 1rem', fontSize: '.86rem' }}>
-        Edit titles and manage up to {MAX_PHOTOS} photos per gift — upload from your device or paste an image URL.
+        Edit every detail — title, price, delivery time, description, category — and up to {MAX_PHOTOS} photos per gift.
         Changes appear in the client shop immediately.
       </p>
-      {products.map((p) => <ShopCatalogRow key={p.id} product={p} />)}
+
+      {adding && <AddProductForm onClose={() => setAdding(false)} />}
+
+      {live.map((p) => <ShopCatalogRow key={p.id} product={p} />)}
+
+      {retired.length > 0 && (
+        <>
+          <div className="pub-h" style={{ marginTop: '1.6rem' }}><h2 className="anton" style={{ fontSize: '1.1rem', color: 'var(--text-dim)' }}>Retired</h2><span className="bar" /></div>
+          {retired.map((p) => (
+            <div className="cat-row" key={p.id} style={{ opacity: .7 }}>
+              <div className="cat-title-row">
+                <span style={{ fontSize: '1.4rem', flex: 'none' }}>{p.emoji}</span>
+                <div className="grow"><div style={{ fontWeight: 800 }}>{p.name}</div><div className="pub-muted" style={{ fontSize: '.74rem' }}>{kes(p.price)} · hidden from shop</div></div>
+                <button className="pub-btn pub-btn-ghost pub-btn-sm" onClick={() => restoreProduct(p.id)}>Restore</button>
+              </div>
+            </div>
+          ))}
+        </>
+      )}
     </>
   )
 }
 
 function ShopCatalogRow({ product }) {
-  const [title, setTitle] = useState(product.name)
+  const [f, setF] = useState({ name: product.name, price: product.price, eta: product.eta || '', blurb: product.blurb || '', category: product.category || CATS[0].id })
   const [urlOpen, setUrlOpen] = useState(false)
   const [url, setUrl] = useState('')
   const [busy, setBusy] = useState(false)
   const fileRef = useRef(null)
   const photos = product.photos || []
-  const dirty = title.trim() && title !== product.name
   const full = photos.length >= MAX_PHOTOS
 
-  // Reflect title changes that arrive from realtime / another admin.
-  useEffect(() => { setTitle(product.name) }, [product.name])
+  // Reflect edits arriving from realtime / another admin.
+  useEffect(() => { setF({ name: product.name, price: product.price, eta: product.eta || '', blurb: product.blurb || '', category: product.category || CATS[0].id }) },
+    [product.name, product.price, product.eta, product.blurb, product.category])
+
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }))
+  const dirty = f.name.trim() && (f.name !== product.name || Number(f.price) !== product.price || f.eta !== (product.eta || '') || f.blurb !== (product.blurb || '') || f.category !== product.category)
+  const save = () => editProduct(product.id, { name: f.name.trim(), price: Math.max(0, Math.round(Number(f.price) || 0)), eta: f.eta.trim(), blurb: f.blurb.trim(), category: f.category })
 
   const addFiles = async (files) => {
     const take = Array.from(files).slice(0, MAX_PHOTOS - photos.length)
@@ -394,7 +422,7 @@ function ShopCatalogRow({ product }) {
     setBusy(true)
     try {
       const urls = []
-      for (const f of take) urls.push(await uploadProductPhoto(product.id, f))
+      for (const file of take) urls.push(await uploadProductPhoto(product.id, file))
       setProductPhotos(product.id, [...photos, ...urls])
     } catch (e) { console.error('[shop] upload failed', e) }
     setBusy(false)
@@ -402,8 +430,7 @@ function ShopCatalogRow({ product }) {
   const addUrl = () => {
     const u = url.trim()
     if (!u || full) return
-    setProductPhotos(product.id, [...photos, u])
-    setUrl(''); setUrlOpen(false)
+    setProductPhotos(product.id, [...photos, u]); setUrl(''); setUrlOpen(false)
   }
   const removeAt = (i) => setProductPhotos(product.id, photos.filter((_, j) => j !== i))
   const makeCover = (i) => setProductPhotos(product.id, [photos[i], ...photos.filter((_, j) => j !== i)])
@@ -412,17 +439,25 @@ function ShopCatalogRow({ product }) {
     <div className="cat-row">
       <div className="cat-title-row">
         <span style={{ fontSize: '1.5rem', flex: 'none' }}>{product.emoji}</span>
-        <input className="pub-input" value={title} onChange={(e) => setTitle(e.target.value)} style={{ flex: 1 }} />
-        <button className="pub-btn pub-btn-siren pub-btn-sm" disabled={!dirty} onClick={() => setProductTitle(product.id, title.trim())}>Save</button>
+        <input className="pub-input" value={f.name} onChange={(e) => set('name', e.target.value)} style={{ flex: 1 }} aria-label="Product name" />
       </div>
+
+      <div className="cat-fields">
+        <label>Price (KES)<input className="pub-input" type="number" min="0" value={f.price} onChange={(e) => set('price', e.target.value)} /></label>
+        <label>Delivery ETA<input className="pub-input" value={f.eta} onChange={(e) => set('eta', e.target.value)} placeholder="2 hr / instant" /></label>
+        <label>Category
+          <select className="pub-select" value={f.category} onChange={(e) => set('category', e.target.value)}>
+            {CATS.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+          </select>
+        </label>
+      </div>
+      <label className="cat-blurb">Description<textarea className="pub-textarea" rows="2" value={f.blurb} onChange={(e) => set('blurb', e.target.value)} /></label>
 
       <div className="cat-photos">
         {photos.map((src, i) => (
           <div className="cat-photo" key={i}>
             <img src={src} alt="" />
-            {i === 0
-              ? <span className="cover-badge">Cover</span>
-              : <button className="mkcover" onClick={() => makeCover(i)}>Make cover</button>}
+            {i === 0 ? <span className="cover-badge">Cover</span> : <button className="mkcover" onClick={() => makeCover(i)}>Make cover</button>}
             <button className="rm" onClick={() => removeAt(i)} aria-label="Remove photo">✕</button>
           </div>
         ))}
@@ -435,18 +470,54 @@ function ShopCatalogRow({ product }) {
       </div>
 
       <div style={{ marginTop: '.55rem', display: 'flex', gap: '.4rem', alignItems: 'center', flexWrap: 'wrap' }}>
-        <span className="pub-muted" style={{ fontSize: '.72rem' }}>{photos.length}/{MAX_PHOTOS} photos · {kes(product.price)} · {product.eta}</span>
-        <div style={{ flex: 1 }} />
+        <span className="pub-muted" style={{ fontSize: '.72rem' }}>{photos.length}/{MAX_PHOTOS} photos</span>
         {!urlOpen ? (
           <button className="pub-btn pub-btn-ghost pub-btn-sm" disabled={full} onClick={() => setUrlOpen(true)}><Icon name="image" size={14} /> Add by URL</button>
         ) : (
-          <div style={{ display: 'flex', gap: '.4rem', flex: 1, minWidth: 200 }}>
+          <div style={{ display: 'flex', gap: '.4rem', flex: 1, minWidth: 180 }}>
             <input className="pub-input" placeholder="https://image-url.jpg" value={url} onChange={(e) => setUrl(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addUrl()} style={{ flex: 1 }} autoFocus />
             <button className="pub-btn pub-btn-siren pub-btn-sm" onClick={addUrl}>Add</button>
             <button className="pub-btn pub-btn-ghost pub-btn-sm" onClick={() => { setUrlOpen(false); setUrl('') }}>✕</button>
           </div>
         )}
+        <div style={{ flex: 1 }} />
+        <button className="pub-btn pub-btn-ghost pub-btn-sm" onClick={() => retireProduct(product.id)}>Retire</button>
+        <button className="pub-btn pub-btn-siren pub-btn-sm" disabled={!dirty} onClick={save}>Save</button>
       </div>
+    </div>
+  )
+}
+
+function AddProductForm({ onClose }) {
+  const [f, setF] = useState({ name: '', emoji: '🎁', price: '', eta: '2 hr', category: CATS[0].id, blurb: '' })
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }))
+  const valid = f.name.trim() && Number(f.price) > 0
+  const create = () => {
+    addProduct({ name: f.name.trim(), emoji: f.emoji.trim() || '🎁', price: Math.round(Number(f.price)), eta: f.eta.trim() || 'same day', category: f.category, blurb: f.blurb.trim() })
+    onClose()
+  }
+  return (
+    <div className="cat-row" style={{ borderColor: 'var(--sig)', boxShadow: 'inset 0 0 0 1px var(--sig)' }}>
+      <div className="cat-title-row">
+        <input className="pub-input" value={f.emoji} onChange={(e) => set('emoji', e.target.value)} style={{ width: 54, textAlign: 'center', flex: 'none' }} aria-label="Emoji" />
+        <input className="pub-input" value={f.name} onChange={(e) => set('name', e.target.value)} placeholder="New gift name" style={{ flex: 1 }} autoFocus />
+      </div>
+      <div className="cat-fields">
+        <label>Price (KES)<input className="pub-input" type="number" min="0" value={f.price} onChange={(e) => set('price', e.target.value)} placeholder="0" /></label>
+        <label>Delivery ETA<input className="pub-input" value={f.eta} onChange={(e) => set('eta', e.target.value)} /></label>
+        <label>Category
+          <select className="pub-select" value={f.category} onChange={(e) => set('category', e.target.value)}>
+            {CATS.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+          </select>
+        </label>
+      </div>
+      <label className="cat-blurb">Description<textarea className="pub-textarea" rows="2" value={f.blurb} onChange={(e) => set('blurb', e.target.value)} placeholder="Short description shown on the card" /></label>
+      <div style={{ display: 'flex', gap: '.4rem', marginTop: '.5rem' }}>
+        <div style={{ flex: 1 }} />
+        <button className="pub-btn pub-btn-ghost pub-btn-sm" onClick={onClose}>Cancel</button>
+        <button className="pub-btn pub-btn-siren pub-btn-sm" disabled={!valid} onClick={create}>Create product</button>
+      </div>
+      <p className="pub-muted" style={{ fontSize: '.7rem', margin: '.4rem 0 0' }}>Add photos after creating — the new product appears in the list above.</p>
     </div>
   )
 }

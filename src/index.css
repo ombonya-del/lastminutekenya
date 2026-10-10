@@ -509,6 +509,12 @@ img { max-width: 100%; display: block; }
 .eco .cat-photo .rm { position: absolute; top: 2px; right: 2px; width: 18px; height: 18px; border-radius: 50%; border: none; background: rgba(23,32,58,.8); color: #fff; font-size: .7rem; cursor: pointer; display: grid; place-items: center; }
 .eco .cat-photo .mkcover { position: absolute; bottom: 0; left: 0; right: 0; border: none; background: rgba(23,32,58,.72); color: #fff; font-size: .55rem; font-weight: 700; padding: .12rem 0; cursor: pointer; }
 .eco .cat-addphoto { width: 66px; height: 66px; border-radius: 10px; border: 1.5px dashed var(--line-2); background: var(--bg-2); color: var(--text-dim); font-size: 1.4rem; cursor: pointer; flex: none; display: grid; place-items: center; }
+.eco .cat-fields { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; margin: .1rem 0 .5rem; }
+.eco .cat-fields label, .eco .cat-blurb { display: block; font-size: .64rem; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--text-dim); }
+.eco .cat-fields label input, .eco .cat-fields label select, .eco .cat-blurb textarea { margin-top: .22rem; }
+.eco .cat-blurb { margin: 0 0 .2rem; }
+.eco .cat-blurb textarea { min-height: 52px; }
+@media (min-width: 560px) { .eco .cat-fields { grid-template-columns: 1fr 1fr 1.3fr; } }
 .eco .product .body { padding: .6rem .7rem .7rem; display: flex; flex-direction: column; gap: .25rem; flex: 1; }
 .eco .product .nm { font-weight: 800; font-size: .9rem; line-height: 1.15; color: var(--text); }
 .eco .product .eta { font-size: .68rem; color: var(--sig); font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }

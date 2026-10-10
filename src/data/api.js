@@ -39,6 +39,7 @@ const toProduct = (r) => ({
   id: r.id, name: r.name, emoji: r.emoji, category: r.category,
   price: r.price, eta: r.eta, blurb: r.blurb,
   photos: Array.isArray(r.photos) ? r.photos : [],
+  active: r.active !== false,
 })
 const toAlert = (r) => ({
   id: r.id, providerId: r.provider_id, providerName: r.provider_name, channel: r.channel,
@@ -58,7 +59,8 @@ export async function fetchAll() {
     supabase.from('alerts').select('*').order('sent_at', { ascending: false }),
     // RLS returns what the caller may see (admin: all customers; others: self).
     supabase.from('profiles').select('id,name,phone').eq('role', 'customer'),
-    supabase.from('gift_products').select('*').eq('active', true).order('sort', { nullsFirst: false }),
+    // All products (incl. retired) — the admin manages them; the client view filters to active.
+    supabase.from('gift_products').select('*').order('sort', { nullsFirst: false }),
   ])
   return {
     providers: (providers.data || []).map(toProvider),
@@ -221,12 +223,22 @@ export async function createGiftOrder({ recipient, address, message, phone, meth
   return order.id
 }
 
-// Admin edits a product (title and/or photo gallery). RLS allows admins only.
+// Admin edits a product (any field) or retires/restores it. RLS: admins only.
+const PRODUCT_COLS = ['name', 'price', 'eta', 'blurb', 'category', 'emoji', 'photos', 'active', 'sort']
 export async function updateProduct(id, patch) {
   const row = {}
-  if (patch.name !== undefined) row.name = patch.name
-  if (patch.photos !== undefined) row.photos = patch.photos
+  for (const k of PRODUCT_COLS) if (patch[k] !== undefined) row[k] = patch[k]
   const { error } = await supabase.from('gift_products').update(row).eq('id', id)
+  if (error) throw error
+}
+
+// Admin creates a new product. RLS: admins only.
+export async function createProduct(p) {
+  const { error } = await supabase.from('gift_products').insert({
+    id: p.id, name: p.name, emoji: p.emoji || '🎁', category: p.category,
+    price: p.price, eta: p.eta, blurb: p.blurb, photos: p.photos || [],
+    active: true, sort: p.sort ?? 1000,
+  })
   if (error) throw error
 }
 

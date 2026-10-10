@@ -418,7 +418,7 @@ function ProductThumb({ product, className = 'thumb', style }) {
 export function ShopHome() {
   const s = useStore()
   const [cat, setCat] = useState('all')
-  const all = s.products || PRODUCTS
+  const all = (s.products || PRODUCTS).filter((p) => p.active !== false)
   const items = cat === 'all' ? all : all.filter((p) => p.category === cat)
   const count = (s.cart || []).reduce((a, c) => a + c.qty, 0)
   const [viewing, setViewing] = useState(null) // product being quick-viewed

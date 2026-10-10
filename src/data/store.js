@@ -366,6 +366,32 @@ export function setProductPhotos(id, photos) {
   patchProduct(id, { photos })
   if (supabaseEnabled) api.updateProduct(id, { photos }).then(refresh).catch((e) => console.error('[shop] photos save failed', e))
 }
+// Edit any product fields (price, eta, blurb, category, name…) in one save.
+export function editProduct(id, patch) {
+  patchProduct(id, patch)
+  if (supabaseEnabled) api.updateProduct(id, patch).then(refresh).catch((e) => console.error('[shop] save failed', e))
+  else toast('Product updated')
+}
+// Add a brand-new product to the catalogue.
+export function addProduct(data) {
+  const id = newId('gx')
+  const product = { id, emoji: '🎁', photos: [], active: true, ...data }
+  commit({ ...state, products: [...(state.products || []), product] })
+  if (supabaseEnabled) api.createProduct(product).then(refresh).catch((e) => console.error('[shop] create failed', e))
+  toast(`Added "${data.name}"`)
+  return id
+}
+// Retire (hide from the shop) or restore a product — reversible, keeps order history.
+export function retireProduct(id) {
+  patchProduct(id, { active: false })
+  if (supabaseEnabled) api.updateProduct(id, { active: false }).then(refresh).catch((e) => console.error('[shop] retire failed', e))
+  toast('Product retired')
+}
+export function restoreProduct(id) {
+  patchProduct(id, { active: true })
+  if (supabaseEnabled) api.updateProduct(id, { active: true }).then(refresh).catch((e) => console.error('[shop] restore failed', e))
+  toast('Product restored')
+}
 
 // Upload a photo file and return its URL. Live: Supabase Storage. Seed/demo:
 // an in-memory object URL so the gallery still works without a backend.
