@@ -4,8 +4,8 @@ import { Icon, Sheet, Avatar } from './components/ui.jsx'
 import { useStore, clearToast } from './data/store.js'
 import { supabaseEnabled } from './lib/supabase.js'
 import { signInStaff, signUpStaff, signOut, onAuthChange } from './lib/auth.js'
-import { whoami } from './data/api.js'
-import { CONFIG, ALLOWED_ROLES, CAN_CROSS_VIEW, OTHER_APPS, appForRole } from './appConfig.js'
+import { getIdentity } from './data/api.js'
+import { CONFIG, ALLOWED_ROLES, LOGIN_ROLES, APP_ANON, CAN_CROSS_VIEW, OTHER_APPS, appForRole } from './appConfig.js'
 
 // ---- role + identity context ----------------------------------------------
 const AppCtx = createContext(null)
@@ -65,7 +65,7 @@ export default function App() {
     if (!supabaseEnabled) return
     let alive = true
     const load = () =>
-      whoami().then((w) => {
+      getIdentity().then((w) => {
         if (alive) {
           setIdentity(w)
           setAuthReady(true)
@@ -84,20 +84,25 @@ export default function App() {
   const effectivePreview = CAN_CROSS_VIEW && previewRole && previewRole !== 'admin' ? previewRole : null
   const role = effectivePreview || realRole
 
-  // Live mode: someone whose role this app doesn't serve reached the wrong door.
-  const wrongDoor = supabaseEnabled && identity && !ALLOWED_ROLES.includes(realRole)
+  // Network & Command are staff-only. Every visitor gets an anonymous session
+  // (role "customer"), so on those apps an unauthenticated visitor must sign in
+  // before anything renders — otherwise staff could never reach their own app.
+  const isGuest = !identity?.email
+  const needsStaffAuth = supabaseEnabled && VITE_APP !== 'public' && isGuest
+  // A signed-in user whose role this app doesn't serve is at the wrong door.
+  const wrongDoor = supabaseEnabled && identity && !isGuest && !ALLOWED_ROLES.includes(realRole)
 
-  // The owner lens (persistent Command/Client/Network switcher) adds a top strip
-  // in the admin build only — offset the sticky headers underneath it.
+  // The owner lens (persistent Command/Client/Network switcher) is an admin-only
+  // power; it adds a top strip, so only offset the sticky headers for real admins.
   useEffect(() => {
-    const on = CAN_CROSS_VIEW && authReady && !wrongDoor
+    const on = CAN_CROSS_VIEW && authReady && !wrongDoor && !needsStaffAuth && realRole === 'admin'
     document.body.classList.toggle('owner-lens', on)
     return () => document.body.classList.remove('owner-lens')
-  }, [authReady, wrongDoor])
+  }, [authReady, wrongDoor, needsStaffAuth, realRole])
 
   // Keep the URL on a route this build actually owns (unless previewing).
   useEffect(() => {
-    if (wrongDoor) return
+    if (wrongDoor || needsStaffAuth) return
     const seg = location.pathname.split('/')[1]
     const target = effectivePreview || (supabaseEnabled ? realRole : roleFromPath(location.pathname))
     if (!ALLOWED_ROLES.includes(seg)) {
@@ -131,6 +136,15 @@ export default function App() {
     )
   }
 
+  if (needsStaffAuth) {
+    return (
+      <>
+        <SignInGate onSignIn={() => setLogin(true)} />
+        {login && <StaffLogin onClose={() => setLogin(false)} />}
+      </>
+    )
+  }
+
   if (wrongDoor) {
     return <WrongDoor role={realRole} onSignOut={async () => { setPreviewRole(null); await signOut() }} />
   }
@@ -159,7 +173,7 @@ export default function App() {
           onClose={() => setSwitcher(false)} />
       )}
 
-      {CAN_CROSS_VIEW && (
+      {CAN_CROSS_VIEW && realRole === 'admin' && (
         <OwnerLens
           active={effectivePreview || 'admin'}
           onPick={(r) => { setPreviewRole(r); navigate('/' + (r === 'admin' ? realRole : r)) }}
@@ -167,6 +181,30 @@ export default function App() {
       )}
       {login && <StaffLogin onClose={() => setLogin(false)} />}
     </AppCtx.Provider>
+  )
+}
+
+// Staff-only apps (Network, Command): gate unauthenticated visitors with a
+// sign-in screen instead of bouncing them, so providers/admins can get in.
+function SignInGate({ onSignIn }) {
+  return (
+    <div className={`eco ${CONFIG.variant}`}>
+      <div style={{ maxWidth: 440, margin: '0 auto', padding: '4rem 1.4rem', textAlign: 'center' }}>
+        <div className="beacon" style={{ margin: '0 auto 1.3rem', background: CONFIG.theme, boxShadow: 'none' }} />
+        <h1 className="anton" style={{ fontSize: '2.1rem', marginBottom: '.5rem' }}>{CONFIG.label}</h1>
+        <p className="pub-muted" style={{ lineHeight: 1.55 }}>
+          {VITE_APP === 'network'
+            ? 'For the Last Minute Network. Sign in to go on standby and catch rescue alerts near you.'
+            : 'Operations access. Sign in with your staff account to continue.'}
+        </p>
+        <button className="pub-btn pub-btn-siren" style={{ marginTop: '1.5rem', background: CONFIG.theme, boxShadow: 'none' }} onClick={onSignIn}>
+          Sign in
+        </button>
+        <a className="pub-btn pub-btn-ghost" style={{ marginTop: '.6rem', textDecoration: 'none' }} href="https://app.lastminutekenya.com">
+          I'm a customer — open the app
+        </a>
+      </div>
+    </div>
   )
 }
 
