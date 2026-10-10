@@ -40,6 +40,8 @@ const toProduct = (r) => ({
   price: r.price, eta: r.eta, blurb: r.blurb,
   photos: Array.isArray(r.photos) ? r.photos : [],
   active: r.active !== false,
+  inStock: r.in_stock !== false,
+  sort: r.sort,
 })
 const toAlert = (r) => ({
   id: r.id, providerId: r.provider_id, providerName: r.provider_name, channel: r.channel,
@@ -224,12 +226,18 @@ export async function createGiftOrder({ recipient, address, message, phone, meth
 }
 
 // Admin edits a product (any field) or retires/restores it. RLS: admins only.
-const PRODUCT_COLS = ['name', 'price', 'eta', 'blurb', 'category', 'emoji', 'photos', 'active', 'sort']
+const PRODUCT_COLS = ['name', 'price', 'eta', 'blurb', 'category', 'emoji', 'photos', 'active', 'in_stock', 'sort']
 export async function updateProduct(id, patch) {
   const row = {}
   for (const k of PRODUCT_COLS) if (patch[k] !== undefined) row[k] = patch[k]
   const { error } = await supabase.from('gift_products').update(row).eq('id', id)
   if (error) throw error
+}
+
+// Persist a new display order (sort = position). RLS: admins only.
+export async function reorderProducts(orderedIds) {
+  await Promise.all(orderedIds.map((id, i) =>
+    supabase.from('gift_products').update({ sort: (i + 1) * 10 }).eq('id', id)))
 }
 
 // Admin creates a new product. RLS: admins only.

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Routes, Route, NavLink, Navigate } from 'react-router-dom'
-import { useStore, sel, assignAssessor, acceptSOS, resolveSOS, clearToast, setProductTitle, setProductPhotos, uploadProductPhoto, editProduct, addProduct, retireProduct, restoreProduct } from '../data/store.js'
+import { useStore, sel, assignAssessor, acceptSOS, resolveSOS, clearToast, setProductTitle, setProductPhotos, uploadProductPhoto, editProduct, addProduct, retireProduct, restoreProduct, setStock, reorderProducts } from '../data/store.js'
 import { SHOP_CATEGORIES, MAX_PHOTOS } from '../data/shop.js'
 import { Icon } from '../components/ui.jsx'
 import { matchProviders } from '../lib/matching.js'
@@ -368,18 +368,41 @@ export function CommandShop() {
   const live = products.filter((p) => p.active !== false)
   const retired = products.filter((p) => p.active === false)
   const [adding, setAdding] = useState(false)
+  const [dragId, setDragId] = useState(null)
+
+  const liveIds = live.map((p) => p.id)
+  const move = (id, dir) => {
+    const i = liveIds.indexOf(id), j = i + dir
+    if (j < 0 || j >= liveIds.length) return
+    const ids = [...liveIds];[ids[i], ids[j]] = [ids[j], ids[i]]
+    reorderProducts(ids)
+  }
+  const dropOn = (overId) => {
+    if (!dragId || dragId === overId) { setDragId(null); return }
+    const ids = liveIds.filter((x) => x !== dragId)
+    ids.splice(ids.indexOf(overId), 0, dragId)
+    reorderProducts(ids); setDragId(null)
+  }
 
   return (
     <>
       <H right={<button className="pub-btn pub-btn-siren pub-btn-sm" onClick={() => setAdding(true)}><Icon name="plus" size={14} /> Add product</button>}>Shop catalogue</H>
       <p className="pub-muted" style={{ margin: '-.3rem 0 1rem', fontSize: '.86rem' }}>
-        Edit every detail — title, price, delivery time, description, category — and up to {MAX_PHOTOS} photos per gift.
+        Edit every detail, reorder by dragging the handle (or ▲▼), and mark items sold out.
         Changes appear in the client shop immediately.
       </p>
 
       {adding && <AddProductForm onClose={() => setAdding(false)} />}
 
-      {live.map((p) => <ShopCatalogRow key={p.id} product={p} />)}
+      {live.map((p, i) => (
+        <ShopCatalogRow key={p.id} product={p}
+          first={i === 0} last={i === live.length - 1}
+          dragging={dragId === p.id}
+          onMove={move}
+          onDragStart={() => setDragId(p.id)}
+          onDragEnd={() => setDragId(null)}
+          onDropRow={() => dropOn(p.id)} />
+      ))}
 
       {retired.length > 0 && (
         <>
@@ -399,7 +422,7 @@ export function CommandShop() {
   )
 }
 
-function ShopCatalogRow({ product }) {
+function ShopCatalogRow({ product, first, last, dragging, onMove, onDragStart, onDragEnd, onDropRow }) {
   const [f, setF] = useState({ name: product.name, price: product.price, eta: product.eta || '', blurb: product.blurb || '', category: product.category || CATS[0].id })
   const [urlOpen, setUrlOpen] = useState(false)
   const [url, setUrl] = useState('')
@@ -435,8 +458,17 @@ function ShopCatalogRow({ product }) {
   const removeAt = (i) => setProductPhotos(product.id, photos.filter((_, j) => j !== i))
   const makeCover = (i) => setProductPhotos(product.id, [photos[i], ...photos.filter((_, j) => j !== i)])
 
+  const soldOut = product.inStock === false
+
   return (
-    <div className="cat-row">
+    <div className={`cat-row${dragging ? ' dragging' : ''}`}
+      onDragOver={(e) => { e.preventDefault() }} onDrop={onDropRow}>
+      <div className="cat-reorder">
+        <span className="grip" draggable onDragStart={onDragStart} onDragEnd={onDragEnd} title="Drag to reorder" aria-label="Drag to reorder">⠿</span>
+        <button className="ord" disabled={first} onClick={() => onMove(product.id, -1)} aria-label="Move up">▲</button>
+        <button className="ord" disabled={last} onClick={() => onMove(product.id, 1)} aria-label="Move down">▼</button>
+        {soldOut && <span className="pub-chip siren" style={{ fontSize: '.6rem' }}>Sold out</span>}
+      </div>
       <div className="cat-title-row">
         <span style={{ fontSize: '1.5rem', flex: 'none' }}>{product.emoji}</span>
         <input className="pub-input" value={f.name} onChange={(e) => set('name', e.target.value)} style={{ flex: 1 }} aria-label="Product name" />
@@ -481,6 +513,7 @@ function ShopCatalogRow({ product }) {
           </div>
         )}
         <div style={{ flex: 1 }} />
+        <button className="pub-btn pub-btn-ghost pub-btn-sm" onClick={() => setStock(product.id, soldOut)}>{soldOut ? 'Back in stock' : 'Sold out'}</button>
         <button className="pub-btn pub-btn-ghost pub-btn-sm" onClick={() => retireProduct(product.id)}>Retire</button>
         <button className="pub-btn pub-btn-siren pub-btn-sm" disabled={!dirty} onClick={save}>Save</button>
       </div>

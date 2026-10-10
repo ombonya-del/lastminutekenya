@@ -392,6 +392,22 @@ export function restoreProduct(id) {
   if (supabaseEnabled) api.updateProduct(id, { active: true }).then(refresh).catch((e) => console.error('[shop] restore failed', e))
   toast('Product restored')
 }
+// Mark a product sold out / back in stock — stays visible, just not orderable.
+export function setStock(id, inStock) {
+  patchProduct(id, { inStock })
+  if (supabaseEnabled) api.updateProduct(id, { in_stock: inStock }).then(refresh).catch((e) => console.error('[shop] stock save failed', e))
+  toast(inStock ? 'Back in stock' : 'Marked sold out')
+}
+// Reorder how products appear (sort = position). Optimistic; persisted live.
+export function reorderProducts(orderedIds) {
+  const pos = {}
+  orderedIds.forEach((id, i) => { pos[id] = (i + 1) * 10 })
+  const products = (state.products || [])
+    .map((p) => (pos[p.id] != null ? { ...p, sort: pos[p.id] } : p))
+    .sort((a, b) => (a.sort ?? 9999) - (b.sort ?? 9999))
+  commit({ ...state, products })
+  if (supabaseEnabled) api.reorderProducts(orderedIds).catch((e) => console.error('[shop] reorder failed', e))
+}
 
 // Upload a photo file and return its URL. Live: Supabase Storage. Seed/demo:
 // an in-memory object URL so the gallery still works without a backend.

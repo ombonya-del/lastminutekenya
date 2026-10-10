@@ -441,7 +441,8 @@ export function ShopHome() {
         {items.map((p) => (
           <div className="product" key={p.id}>
             <button className="thumb-btn" onClick={() => setViewing(p)} aria-label={`View ${p.name}`}>
-              <ProductThumb product={p} />
+              <ProductThumb product={p} style={p.inStock === false ? { filter: 'grayscale(.7) opacity(.75)' } : undefined} />
+              {p.inStock === false && <span className="soldout-badge">Sold out</span>}
               {p.photos?.length > 1 && <span className="photo-count">{p.photos.length} photos</span>}
             </button>
             <div className="body">
@@ -449,7 +450,9 @@ export function ShopHome() {
               <button className="nm nm-link" onClick={() => setViewing(p)}>{p.name}</button>
               <div className="pub-muted" style={{ fontSize: '.72rem' }}>{p.blurb}</div>
               <div className="price">{kes(p.price)}</div>
-              <button className="pub-btn pub-btn-siren pub-btn-sm add" style={{ width: '100%' }} onClick={() => addToCart(p.id)}>Add</button>
+              {p.inStock === false
+                ? <button className="pub-btn pub-btn-ghost pub-btn-sm add" style={{ width: '100%' }} disabled>Sold out</button>
+                : <button className="pub-btn pub-btn-siren pub-btn-sm add" style={{ width: '100%' }} onClick={() => addToCart(p.id)}>Add</button>}
             </div>
           </div>
         ))}
@@ -504,9 +507,9 @@ function ProductSheet({ product, onClose }) {
           <h2 className="anton" style={{ fontSize: '1.5rem', margin: '.2rem 0' }}>{product.name}</h2>
           <p className="pub-muted" style={{ fontSize: '.88rem', lineHeight: 1.45 }}>{product.blurb}</p>
           <div className="price" style={{ fontSize: '1.6rem', margin: '.3rem 0 .8rem' }}>{kes(product.price)}</div>
-          <button className="pub-btn pub-btn-siren pub-btn-block" onClick={() => { addToCart(product.id); onClose() }}>
-            Add to gift order
-          </button>
+          {product.inStock === false
+            ? <button className="pub-btn pub-btn-ghost pub-btn-block" disabled>Sold out</button>
+            : <button className="pub-btn pub-btn-siren pub-btn-block" onClick={() => { addToCart(product.id); onClose() }}>Add to gift order</button>}
         </div>
       </div>
     </div>
