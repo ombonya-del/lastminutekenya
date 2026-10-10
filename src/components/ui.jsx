@@ -60,6 +60,8 @@ const P = {
   spark: 'M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M18 6l-2.5 2.5M8.5 15.5 6 18',
   send: 'M4 12 20 4l-6 16-2.5-6.5L4 12Z',
   file: 'M7 3h7l4 4v14H7zM14 3v4h4',
+  gift: 'M4 11h16v9H4zM4 7h16v4H4zM12 7v13M12 7S10.5 3 8 4s.5 3 4 3ZM12 7s1.5-4 4-3-.5 3-4 3Z',
+  image: 'M4 5h16v14H4zM4 15l4-4 5 5M14 13l2-2 4 4M8.5 9a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z',
 }
 export function Icon({ name, size = 22, style }) {
   return (

@@ -15,6 +15,7 @@ import { matchProviders } from '../lib/matching.js'
 import { buildAlerts } from '../lib/alertEngine.js'
 import { hoursUntil } from '../lib/format.js'
 import { areaCoord } from '../lib/geo.js'
+import { PRODUCTS } from './shop.js'
 import { supabaseEnabled } from '../lib/supabase.js'
 import { ensureAnonymousSession } from '../lib/auth.js'
 import * as api from './api.js'
@@ -39,6 +40,9 @@ let state = supabaseEnabled
       now: new Date(),
       providers: [], clients: [], assessors: [], events: [],
       assessments: [], sosJobs: [], alertsLog: [], cart: [], toast: null,
+      // Seed the catalogue so the shop renders before the first hydrate; the
+      // live gift_products rows replace it once fetchAll() returns.
+      products: clone(PRODUCTS),
     }
   : {
       now: new Date(seed.NOW_ISO),
@@ -51,6 +55,7 @@ let state = supabaseEnabled
       alertsLog: clone(seed.alertsLog),
       cart: [],
       toast: null,
+      products: clone(PRODUCTS),
     }
 
 const listeners = new Set()
@@ -72,7 +77,13 @@ export function useStore() {
 function refresh() {
   return api
     .fetchAll()
-    .then((data) => commit({ ...state, ...data }))
+    .then((data) => {
+      const next = { ...state, ...data }
+      // If the catalogue hasn't been seeded in the DB yet, keep the built-in one
+      // so the shop is never blank.
+      if (!next.products || next.products.length === 0) next.products = clone(PRODUCTS)
+      commit(next)
+    })
     .catch((e) => console.error('[store] refresh failed', e))
 }
 if (supabaseEnabled) {
@@ -92,7 +103,11 @@ export const sel = {
   assessmentForEvent: (s, eventId) => s.assessments.find((a) => a.eventId === eventId),
   alertsFor: (s, providerId) => s.alertsLog.filter((a) => a.providerId === providerId),
   jobsOpen: (s) => s.sosJobs.filter((j) => j.status !== 'resolved'),
+  product: (s, id) => (s.products || []).find((p) => p.id === id),
 }
+
+// Look up a product from live store state (reflects admin title/photo edits).
+export const productFromState = (id) => (state.products || []).find((p) => p.id === id)
 
 // ---- actions ---------------------------------------------------------------
 
@@ -334,6 +349,29 @@ export function setReadiness(providerId, readiness) {
     ...state,
     providers: state.providers.map((p) => (p.id === providerId ? { ...p, readiness } : p)),
   })
+}
+
+// ---- Gift Shop catalogue (admin edits) ------------------------------------
+function patchProduct(id, patch) {
+  const products = (state.products || []).map((p) => (p.id === id ? { ...p, ...patch } : p))
+  commit({ ...state, products })
+}
+// Edit a product title. Optimistic locally; persisted in live mode.
+export function setProductTitle(id, name) {
+  patchProduct(id, { name })
+  if (supabaseEnabled) api.updateProduct(id, { name }).then(refresh).catch((e) => console.error('[shop] title save failed', e))
+}
+// Replace a product's photo gallery (ordered; first = cover; max enforced in UI).
+export function setProductPhotos(id, photos) {
+  patchProduct(id, { photos })
+  if (supabaseEnabled) api.updateProduct(id, { photos }).then(refresh).catch((e) => console.error('[shop] photos save failed', e))
+}
+
+// Upload a photo file and return its URL. Live: Supabase Storage. Seed/demo:
+// an in-memory object URL so the gallery still works without a backend.
+export async function uploadProductPhoto(id, file) {
+  if (supabaseEnabled) return api.uploadShopPhoto(id, file)
+  return URL.createObjectURL(file)
 }
 
 // ---- Gift Shop cart (client-side) -----------------------------------------

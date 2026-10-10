@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Routes, Route, NavLink, Navigate } from 'react-router-dom'
-import { useStore, sel, assignAssessor, acceptSOS, resolveSOS, clearToast } from '../data/store.js'
+import { useStore, sel, assignAssessor, acceptSOS, resolveSOS, clearToast, setProductTitle, setProductPhotos, uploadProductPhoto } from '../data/store.js'
+import { SHOP_CATEGORIES, MAX_PHOTOS } from '../data/shop.js'
 import { Icon } from '../components/ui.jsx'
 import { matchProviders } from '../lib/matching.js'
 import { scoreAssessment, BAND_META } from '../lib/scorecard.js'
@@ -32,6 +33,7 @@ export function CommandShell({ onStaff }) {
           <Route path="/admin/scorecards" element={<CommandScorecards />} />
           <Route path="/admin/dispatch" element={<CommandDispatch />} />
           <Route path="/admin/network" element={<CommandNetwork />} />
+          <Route path="/admin/shop" element={<CommandShop />} />
           <Route path="/admin/accounts" element={<CommandAccounts />} />
           <Route path="*" element={<Navigate to="/admin" replace />} />
         </Routes>
@@ -41,6 +43,7 @@ export function CommandShell({ onStaff }) {
         <NavLink to="/admin/scorecards" className={({ isActive }) => (isActive ? 'active' : '')}><Icon name="shield" size={21} /> Scores</NavLink>
         <NavLink to="/admin/dispatch" className={({ isActive }) => (isActive ? 'active' : '')}><Icon name="send" size={21} /> Dispatch</NavLink>
         <NavLink to="/admin/network" className={({ isActive }) => (isActive ? 'active' : '')}><Icon name="map" size={21} /> Map</NavLink>
+        <NavLink to="/admin/shop" className={({ isActive }) => (isActive ? 'active' : '')}><Icon name="gift" size={21} /> Shop</NavLink>
         <NavLink to="/admin/accounts" className={({ isActive }) => (isActive ? 'active' : '')}><Icon name="users" size={21} /> Accts</NavLink>
       </nav>
       <EcoToaster />
@@ -352,6 +355,98 @@ function LinkRow({ onLink, linked }) {
     <div style={{ display: 'flex', gap: '.4rem', marginTop: '.5rem' }}>
       <input className="pub-input" style={{ padding: '.45rem .6rem', fontSize: '.85rem' }} type="email" placeholder={linked ? 'Re-link email' : "Account holder's email"} value={email} onChange={(e) => setEmail(e.target.value)} />
       <button className="pub-btn pub-btn-hazard pub-btn-sm" disabled={!email} onClick={() => { onLink(email); setEmail('') }}>{linked ? 'Re-link' : 'Link'}</button>
+    </div>
+  )
+}
+
+// ---- Shop catalogue manager (admin) ---------------------------------------
+export function CommandShop() {
+  const s = useStore()
+  const products = s.products || []
+  return (
+    <>
+      <H>Shop catalogue</H>
+      <p className="pub-muted" style={{ margin: '-.3rem 0 1rem', fontSize: '.86rem' }}>
+        Edit titles and manage up to {MAX_PHOTOS} photos per gift — upload from your device or paste an image URL.
+        Changes appear in the client shop immediately.
+      </p>
+      {products.map((p) => <ShopCatalogRow key={p.id} product={p} />)}
+    </>
+  )
+}
+
+function ShopCatalogRow({ product }) {
+  const [title, setTitle] = useState(product.name)
+  const [urlOpen, setUrlOpen] = useState(false)
+  const [url, setUrl] = useState('')
+  const [busy, setBusy] = useState(false)
+  const fileRef = useRef(null)
+  const photos = product.photos || []
+  const dirty = title.trim() && title !== product.name
+  const full = photos.length >= MAX_PHOTOS
+
+  // Reflect title changes that arrive from realtime / another admin.
+  useEffect(() => { setTitle(product.name) }, [product.name])
+
+  const addFiles = async (files) => {
+    const take = Array.from(files).slice(0, MAX_PHOTOS - photos.length)
+    if (!take.length) return
+    setBusy(true)
+    try {
+      const urls = []
+      for (const f of take) urls.push(await uploadProductPhoto(product.id, f))
+      setProductPhotos(product.id, [...photos, ...urls])
+    } catch (e) { console.error('[shop] upload failed', e) }
+    setBusy(false)
+  }
+  const addUrl = () => {
+    const u = url.trim()
+    if (!u || full) return
+    setProductPhotos(product.id, [...photos, u])
+    setUrl(''); setUrlOpen(false)
+  }
+  const removeAt = (i) => setProductPhotos(product.id, photos.filter((_, j) => j !== i))
+  const makeCover = (i) => setProductPhotos(product.id, [photos[i], ...photos.filter((_, j) => j !== i)])
+
+  return (
+    <div className="cat-row">
+      <div className="cat-title-row">
+        <span style={{ fontSize: '1.5rem', flex: 'none' }}>{product.emoji}</span>
+        <input className="pub-input" value={title} onChange={(e) => setTitle(e.target.value)} style={{ flex: 1 }} />
+        <button className="pub-btn pub-btn-siren pub-btn-sm" disabled={!dirty} onClick={() => setProductTitle(product.id, title.trim())}>Save</button>
+      </div>
+
+      <div className="cat-photos">
+        {photos.map((src, i) => (
+          <div className="cat-photo" key={i}>
+            <img src={src} alt="" />
+            {i === 0
+              ? <span className="cover-badge">Cover</span>
+              : <button className="mkcover" onClick={() => makeCover(i)}>Make cover</button>}
+            <button className="rm" onClick={() => removeAt(i)} aria-label="Remove photo">✕</button>
+          </div>
+        ))}
+        {!full && (
+          <>
+            <button className="cat-addphoto" title="Upload photo" disabled={busy} onClick={() => fileRef.current?.click()}>{busy ? '…' : '＋'}</button>
+            <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={(e) => { addFiles(e.target.files); e.target.value = '' }} />
+          </>
+        )}
+      </div>
+
+      <div style={{ marginTop: '.55rem', display: 'flex', gap: '.4rem', alignItems: 'center', flexWrap: 'wrap' }}>
+        <span className="pub-muted" style={{ fontSize: '.72rem' }}>{photos.length}/{MAX_PHOTOS} photos · {kes(product.price)} · {product.eta}</span>
+        <div style={{ flex: 1 }} />
+        {!urlOpen ? (
+          <button className="pub-btn pub-btn-ghost pub-btn-sm" disabled={full} onClick={() => setUrlOpen(true)}><Icon name="image" size={14} /> Add by URL</button>
+        ) : (
+          <div style={{ display: 'flex', gap: '.4rem', flex: 1, minWidth: 200 }}>
+            <input className="pub-input" placeholder="https://image-url.jpg" value={url} onChange={(e) => setUrl(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addUrl()} style={{ flex: 1 }} autoFocus />
+            <button className="pub-btn pub-btn-siren pub-btn-sm" onClick={addUrl}>Add</button>
+            <button className="pub-btn pub-btn-ghost pub-btn-sm" onClick={() => { setUrlOpen(false); setUrl('') }}>✕</button>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

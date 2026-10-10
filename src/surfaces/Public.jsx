@@ -394,18 +394,34 @@ export function PublicRequests() {
 }
 
 // ---- Save-The-Day Gift Shop -----------------------------------------------
-function cartLines(cart) {
-  return (cart || []).map((c) => ({ ...c, product: productById(c.productId) })).filter((l) => l.product)
+// Resolve cart lines against the live catalogue (reflects admin title/photo edits).
+function cartLines(cart, products) {
+  const byId = (id) => (products || []).find((p) => p.id === id) || productById(id)
+  return (cart || []).map((c) => ({ ...c, product: byId(c.productId) })).filter((l) => l.product)
 }
-function cartSubtotal(cart) {
-  return cartLines(cart).reduce((a, l) => a + l.product.price * l.qty, 0)
+function cartSubtotal(cart, products) {
+  return cartLines(cart, products).reduce((a, l) => a + l.product.price * l.qty, 0)
+}
+
+// First photo is the cover; falls back to the emoji tile when there are none.
+function ProductThumb({ product, className = 'thumb', style }) {
+  const cover = product.photos?.[0]
+  if (cover) {
+    return <div className={className} style={{ padding: 0, ...style }}>
+      <img src={cover} alt={product.name} loading="lazy"
+        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+    </div>
+  }
+  return <div className={className} style={style}>{product.emoji}</div>
 }
 
 export function ShopHome() {
   const s = useStore()
   const [cat, setCat] = useState('all')
-  const items = cat === 'all' ? PRODUCTS : PRODUCTS.filter((p) => p.category === cat)
+  const all = s.products || PRODUCTS
+  const items = cat === 'all' ? all : all.filter((p) => p.category === cat)
   const count = (s.cart || []).reduce((a, c) => a + c.qty, 0)
+  const [viewing, setViewing] = useState(null) // product being quick-viewed
 
   return (
     <>
@@ -424,10 +440,13 @@ export function ShopHome() {
       <div className="shop-grid" style={{ paddingBottom: count ? '3.5rem' : 0 }}>
         {items.map((p) => (
           <div className="product" key={p.id}>
-            <div className="thumb">{p.emoji}</div>
+            <button className="thumb-btn" onClick={() => setViewing(p)} aria-label={`View ${p.name}`}>
+              <ProductThumb product={p} />
+              {p.photos?.length > 1 && <span className="photo-count">{p.photos.length} photos</span>}
+            </button>
             <div className="body">
               <div className="eta">⚡ {p.eta}</div>
-              <div className="nm">{p.name}</div>
+              <button className="nm nm-link" onClick={() => setViewing(p)}>{p.name}</button>
               <div className="pub-muted" style={{ fontSize: '.72rem' }}>{p.blurb}</div>
               <div className="price">{kes(p.price)}</div>
               <button className="pub-btn pub-btn-siren pub-btn-sm add" style={{ width: '100%' }} onClick={() => addToCart(p.id)}>Add</button>
@@ -435,6 +454,8 @@ export function ShopHome() {
           </div>
         ))}
       </div>
+
+      {viewing && <ProductSheet product={viewing} onClose={() => setViewing(null)} />}
 
       {count > 0 && (
         <NavLink to="/customer/cart" className="cartbar" style={{ textDecoration: 'none' }}>
@@ -446,10 +467,56 @@ export function ShopHome() {
   )
 }
 
+// Quick-view with a swipeable gallery (up to 5 photos), details and Add-to-cart.
+function ProductSheet({ product, onClose }) {
+  const photos = product.photos || []
+  const [idx, setIdx] = useState(0)
+  const trackRef = useRef(null)
+  const onScroll = () => {
+    const el = trackRef.current
+    if (!el) return
+    setIdx(Math.round(el.scrollLeft / el.clientWidth))
+  }
+  return (
+    <div className="sheet-backdrop" onClick={onClose}>
+      <div className="sheet-card" onClick={(e) => e.stopPropagation()}>
+        <button className="sheet-x" onClick={onClose} aria-label="Close">✕</button>
+        {photos.length > 0 ? (
+          <>
+            <div className="gallery" ref={trackRef} onScroll={onScroll}>
+              {photos.map((src, i) => (
+                <div className="gallery-slide" key={i}>
+                  <img src={src} alt={`${product.name} ${i + 1}`} />
+                </div>
+              ))}
+            </div>
+            {photos.length > 1 && (
+              <div className="gallery-dots">
+                {photos.map((_, i) => <span key={i} className={i === idx ? 'on' : ''} />)}
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="gallery-empty">{product.emoji}</div>
+        )}
+        <div style={{ padding: '0 .2rem' }}>
+          <div className="eta">⚡ {product.eta}</div>
+          <h2 className="anton" style={{ fontSize: '1.5rem', margin: '.2rem 0' }}>{product.name}</h2>
+          <p className="pub-muted" style={{ fontSize: '.88rem', lineHeight: 1.45 }}>{product.blurb}</p>
+          <div className="price" style={{ fontSize: '1.6rem', margin: '.3rem 0 .8rem' }}>{kes(product.price)}</div>
+          <button className="pub-btn pub-btn-siren pub-btn-block" onClick={() => { addToCart(product.id); onClose() }}>
+            Add to gift order
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function ShopCart() {
   const s = useStore()
-  const lines = cartLines(s.cart)
-  const sub = cartSubtotal(s.cart)
+  const lines = cartLines(s.cart, s.products)
+  const sub = cartSubtotal(s.cart, s.products)
   if (lines.length === 0) {
     return (
       <div className="pub-panel" style={{ textAlign: 'center', marginTop: '1.5rem', padding: '2rem 1.2rem' }}>
@@ -465,7 +532,9 @@ export function ShopCart() {
       <div className="pub-panel">
         {lines.map((l) => (
           <div className="cart-row" key={l.productId}>
-            <div style={{ fontSize: '1.8rem' }}>{l.product.emoji}</div>
+            {l.product.photos?.[0]
+              ? <img src={l.product.photos[0]} alt="" className="cart-thumb" />
+              : <div style={{ fontSize: '1.8rem', width: 38, textAlign: 'center' }}>{l.product.emoji}</div>}
             <div className="grow"><div style={{ fontWeight: 800, fontSize: '.9rem' }}>{l.product.name}</div><div className="pub-muted" style={{ fontSize: '.8rem' }}>{kes(l.product.price)}</div></div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '.4rem' }}>
               <button className="qtybtn" onClick={() => setQty(l.productId, l.qty - 1)}>−</button>
@@ -487,8 +556,8 @@ export function ShopCart() {
 
 export function ShopCheckout() {
   const s = useStore()
-  const lines = cartLines(s.cart)
-  const sub = cartSubtotal(s.cart)
+  const lines = cartLines(s.cart, s.products)
+  const sub = cartSubtotal(s.cart, s.products)
   const total = sub + SHOP_DELIVERY_FEE
   const [recipient, setRecipient] = useState('')
   const [addr, setAddr] = useState('')

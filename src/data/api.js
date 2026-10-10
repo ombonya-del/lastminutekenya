@@ -35,6 +35,11 @@ const toJob = (r) => ({
   id: r.id, eventId: r.event_id, fromAssessment: r.from_assessment, category: r.category,
   status: r.status, note: r.note, acceptedBy: r.accepted_by, raisedAt: r.raised_at,
 })
+const toProduct = (r) => ({
+  id: r.id, name: r.name, emoji: r.emoji, category: r.category,
+  price: r.price, eta: r.eta, blurb: r.blurb,
+  photos: Array.isArray(r.photos) ? r.photos : [],
+})
 const toAlert = (r) => ({
   id: r.id, providerId: r.provider_id, providerName: r.provider_name, channel: r.channel,
   kind: r.kind, likelihood: r.likelihood, category: r.category, areaId: r.area, refId: r.ref_id,
@@ -44,7 +49,7 @@ const toAlert = (r) => ({
 
 // ---- reads -----------------------------------------------------------------
 export async function fetchAll() {
-  const [providers, assessors, events, assessments, sosJobs, alerts, clients] = await Promise.all([
+  const [providers, assessors, events, assessments, sosJobs, alerts, clients, products] = await Promise.all([
     supabase.from('providers_public').select('*'),
     supabase.from('assessors').select('*'),
     supabase.from('events').select('*').order('starts_at'),
@@ -53,6 +58,7 @@ export async function fetchAll() {
     supabase.from('alerts').select('*').order('sent_at', { ascending: false }),
     // RLS returns what the caller may see (admin: all customers; others: self).
     supabase.from('profiles').select('id,name,phone').eq('role', 'customer'),
+    supabase.from('gift_products').select('*').eq('active', true).order('sort', { nullsFirst: false }),
   ])
   return {
     providers: (providers.data || []).map(toProvider),
@@ -62,6 +68,7 @@ export async function fetchAll() {
     sosJobs: (sosJobs.data || []).map(toJob),
     alertsLog: (alerts.data || []).map(toAlert),
     clients: (clients.data || []).map((r) => ({ id: r.id, name: r.name, phone: r.phone })),
+    products: (products.data || []).map(toProduct),
   }
 }
 
@@ -214,6 +221,27 @@ export async function createGiftOrder({ recipient, address, message, phone, meth
   return order.id
 }
 
+// Admin edits a product (title and/or photo gallery). RLS allows admins only.
+export async function updateProduct(id, patch) {
+  const row = {}
+  if (patch.name !== undefined) row.name = patch.name
+  if (patch.photos !== undefined) row.photos = patch.photos
+  const { error } = await supabase.from('gift_products').update(row).eq('id', id)
+  if (error) throw error
+}
+
+// Upload a product photo to the public `shop-photos` bucket, return its URL.
+export async function uploadShopPhoto(productId, file) {
+  const ext = (file.name?.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '')
+  const path = `${productId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
+  const { error } = await supabase.storage.from('shop-photos').upload(path, file, {
+    cacheControl: '31536000', upsert: false, contentType: file.type || undefined,
+  })
+  if (error) throw error
+  const { data } = supabase.storage.from('shop-photos').getPublicUrl(path)
+  return data.publicUrl
+}
+
 // M-Pesa STK push (Daraja). Passes the order id so the callback can mark it paid.
 export async function mpesaCheckout({ phone, amount, orderId }) {
   const { data, error } = await supabase.functions.invoke('mpesa-stkpush', {
@@ -237,7 +265,7 @@ export async function flutterwaveCharge({ phone, amount, orderId, method, email,
 // re-run fetchAll() (simplest) or patch state per-row.
 export function subscribeRealtime(onChange) {
   const channel = supabase.channel('lmk-realtime')
-  for (const table of ['assessments', 'sos_jobs', 'alerts', 'providers']) {
+  for (const table of ['assessments', 'sos_jobs', 'alerts', 'providers', 'gift_products']) {
     channel.on('postgres_changes', { event: '*', schema: 'public', table }, onChange)
   }
   channel.subscribe()

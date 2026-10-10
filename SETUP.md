@@ -183,6 +183,25 @@ mirroring `mpesa-callback`.)
 request shows the flat fee; and the Gift Shop carries retail margin + a delivery fee.
 Tune the numbers in `src/lib/pricing.js`.
 
+### 5f. Gift Shop product photos (catalogue manager)
+
+Owners manage the shop catalogue in the **Admin app → Shop** tab: edit each gift's
+title and give it up to **5 photos** (upload from the device, or paste an image URL).
+Photos and titles save to the `gift_products` table and show in the client shop
+immediately.
+
+One migration sets this up — it adds the `photos` column, admin write policies, seeds
+the 12 base products, and creates a **public Storage bucket** (`shop-photos`) that only
+admins can write to:
+```bash
+supabase db push        # applies 0008_shop_photos.sql (and any others)
+```
+If you prefer the dashboard: paste `supabase/migrations/0008_shop_photos.sql` into the
+SQL editor and run it. It is idempotent and never overwrites existing product edits.
+Uploaded files land in Storage → `shop-photos`; the public URL is stored in the
+product's `photos` list (first photo = the cover shown on the card). No photos → the
+card falls back to the gift's emoji, so the shop always looks complete.
+
 Then set the channel secrets (these live ONLY in the function's env — never in the
 bundle, never in git):
 
