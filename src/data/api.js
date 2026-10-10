@@ -164,6 +164,21 @@ export async function whoami() {
   return data
 }
 
+// Full identity for routing: role + whether this is a real (non-anonymous)
+// session. Returns null when there is no session at all (so isolated apps can
+// show a sign-in gate instead of guessing a role).
+export async function getIdentity() {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+  const who = await whoami()
+  return {
+    ...who,
+    uid: user.id,
+    email: user.email ?? who?.email ?? null,
+    isAnonymous: !!user.is_anonymous,
+  }
+}
+
 // Admin: list everyone who has signed up (RLS returns all for admins).
 export async function listProfiles() {
   const { data } = await supabase

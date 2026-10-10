@@ -22,6 +22,8 @@ export const APPS = {
     label: 'LastMinute Kenya',
     audience: 'Clients',
     roles: ['customer'],
+    loginRoles: ['customer'],
+    anon: true,          // clients browse anonymously — no sign-in needed
     home: '/customer',
     crossView: [],
     // sunrise coral/gold — hopeful, "help is coming"
@@ -40,6 +42,8 @@ export const APPS = {
     label: 'LMK Network',
     audience: 'Providers',
     roles: ['provider'],
+    loginRoles: ['provider'],
+    anon: false,         // providers must sign in
     home: '/provider',
     crossView: [],
     // fresh green/teal — growth, readiness, "you are the rescue"
@@ -59,6 +63,8 @@ export const APPS = {
     audience: 'Operations',
     // admin build carries admin + assessor surfaces, and can look into the others
     roles: ['admin', 'assessor', 'customer', 'provider'],
+    loginRoles: ['admin', 'assessor'],   // only admins/assessors may sign in here
+    anon: false,
     home: '/admin',
     crossView: ['customer', 'provider'],
     // sky indigo — calm, in-control, trustworthy
@@ -76,8 +82,12 @@ export const APPS = {
 
 export const CONFIG = APPS[APP] || APPS.public
 
-// Roles this build may ever show (used to gate routing + login).
+// Roles this build may ever RENDER (admin also renders customer/provider to preview them).
 export const ALLOWED_ROLES = CONFIG.roles
+// Roles that may actually SIGN IN to this build (narrower than render roles).
+export const LOGIN_ROLES = CONFIG.loginRoles || CONFIG.roles
+// Does this build sign visitors in anonymously (clients) vs require a real login?
+export const APP_ANON = !!CONFIG.anon
 // Can this build hop into other stakeholder surfaces? (admin only)
 export const CAN_CROSS_VIEW = CONFIG.crossView.length > 0
 
