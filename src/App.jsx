@@ -3,7 +3,7 @@ import { Routes, Route, NavLink, Navigate, useLocation, useNavigate } from 'reac
 import { Icon, Sheet, Avatar } from './components/ui.jsx'
 import { useStore, clearToast } from './data/store.js'
 import { supabaseEnabled } from './lib/supabase.js'
-import { signInStaff, signUpStaff, signOut, onAuthChange } from './lib/auth.js'
+import { signInStaff, signUpStaff, signOut, onAuthChange, requestPasswordReset, updatePassword } from './lib/auth.js'
 import { getIdentity } from './data/api.js'
 import { CONFIG, ALLOWED_ROLES, LOGIN_ROLES, APP_ANON, CAN_CROSS_VIEW, OTHER_APPS, appForRole } from './appConfig.js'
 
@@ -60,6 +60,8 @@ export default function App() {
   // Live identity (from Supabase whoami).
   const [identity, setIdentity] = useState(null)
   const [authReady, setAuthReady] = useState(!supabaseEnabled)
+  // True while the user is completing a password-reset link (set-new-password).
+  const [recovery, setRecovery] = useState(false)
 
   useEffect(() => {
     if (!supabaseEnabled) return
@@ -72,7 +74,10 @@ export default function App() {
         }
       })
     load()
-    const off = onAuthChange(load)
+    const off = onAuthChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') setRecovery(true)
+      load()
+    })
     return () => {
       alive = false
       off()
@@ -136,6 +141,11 @@ export default function App() {
     )
   }
 
+  // Arrived via a password-reset email link → let them set a new password.
+  if (recovery) {
+    return <ResetPassword onDone={() => setRecovery(false)} />
+  }
+
   if (needsStaffAuth) {
     return (
       <>
@@ -181,6 +191,46 @@ export default function App() {
       )}
       {login && <StaffLogin onClose={() => setLogin(false)} />}
     </AppCtx.Provider>
+  )
+}
+
+// Shown when the user arrives via a password-reset email link.
+function ResetPassword({ onDone }) {
+  const [pw, setPw] = useState('')
+  const [pw2, setPw2] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [ok, setOk] = useState(false)
+  const submit = async () => {
+    setErr('')
+    if (pw.length < 6) { setErr('Use at least 6 characters.'); return }
+    if (pw !== pw2) { setErr("Passwords don't match."); return }
+    setBusy(true)
+    const { error } = await updatePassword(pw)
+    setBusy(false)
+    if (error) setErr(typeof error === 'string' ? error : error.message)
+    else setOk(true)
+  }
+  return (
+    <div className={`eco ${CONFIG.variant}`}>
+      <div style={{ maxWidth: 440, margin: '0 auto', padding: '3.5rem 1.4rem' }}>
+        <div className="beacon" style={{ margin: '0 auto 1.2rem', background: CONFIG.theme, boxShadow: 'none' }} />
+        <h1 className="anton" style={{ fontSize: '1.9rem', textAlign: 'center', marginBottom: '.6rem' }}>{ok ? 'Password updated' : 'Set a new password'}</h1>
+        {ok ? (
+          <div style={{ textAlign: 'center' }}>
+            <p className="pub-muted">You're all set — you're now signed in with your new password.</p>
+            <button className="pub-btn pub-btn-siren pub-btn-block" style={{ marginTop: '1.3rem', background: CONFIG.theme, boxShadow: 'none' }} onClick={onDone}>Continue</button>
+          </div>
+        ) : (
+          <>
+            <div className="pub-field"><label>New password</label><input className="pub-input" type="password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="At least 6 characters" autoFocus /></div>
+            <div className="pub-field"><label>Confirm password</label><input className="pub-input" type="password" value={pw2} onChange={(e) => setPw2(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submit()} /></div>
+            {err && <p className="pub-muted" style={{ color: 'var(--red)', marginTop: '.5rem' }}>{err}</p>}
+            <button className="pub-btn pub-btn-siren pub-btn-block" style={{ marginTop: '1rem', background: CONFIG.theme, boxShadow: 'none' }} disabled={busy || !pw || !pw2} onClick={submit}>{busy ? 'Saving…' : 'Save new password'}</button>
+          </>
+        )}
+      </div>
+    </div>
   )
 }
 
@@ -340,7 +390,12 @@ function StaffLogin({ onClose }) {
   const submit = async () => {
     setBusy(true)
     setErr('')
-    if (mode === 'in') {
+    if (mode === 'reset') {
+      const { error } = await requestPasswordReset(email)
+      setBusy(false)
+      if (error) setErr(typeof error === 'string' ? error : error.message)
+      else setDone('reset')
+    } else if (mode === 'in') {
       const { error } = await signInStaff(email, password)
       setBusy(false)
       if (error) setErr(typeof error === 'string' ? error : error.message)
@@ -355,19 +410,39 @@ function StaffLogin({ onClose }) {
 
   if (done) {
     return (
-      <Sheet title="Request sent" onClose={onClose}>
+      <Sheet title={done === 'reset' ? 'Check your email' : 'Request sent'} onClose={onClose}>
         <div style={{ textAlign: 'center', padding: '.5rem 0 .3rem' }}>
           <div className="avatar" style={{ background: 'var(--go)', margin: '0 auto .6rem', width: 48, height: 48 }}>
             <Icon name="check" size={24} style={{ color: '#fff' }} />
           </div>
-          <div className="subtitle">Account created</div>
+          <div className="subtitle">{done === 'reset' ? 'Reset link sent' : 'Account created'}</div>
           <p className="body" style={{ marginTop: '.4rem' }}>
-            {done === 'confirm'
-              ? 'Check your email to confirm the address, then an admin will grant your access.'
-              : `Thanks${name ? ', ' + name : ''}. An admin will review and grant your ${requestedRole} access shortly.`}
+            {done === 'reset'
+              ? `If an account exists for ${email || 'that address'}, a password-reset link is on its way. Open it on this device to set a new password.`
+              : done === 'confirm'
+                ? 'Check your email to confirm the address, then an admin will grant your access.'
+                : `Thanks${name ? ', ' + name : ''}. An admin will review and grant your ${requestedRole} access shortly.`}
           </p>
           <button className="btn btn-primary" style={{ marginTop: '.9rem' }} onClick={onClose}>Done</button>
         </div>
+      </Sheet>
+    )
+  }
+
+  // Forgot-password: just ask for the email and send a reset link.
+  if (mode === 'reset') {
+    return (
+      <Sheet title="Reset password" onClose={onClose}>
+        <p className="caption" style={{ marginTop: 0 }}>Enter your account email and we'll send a link to set a new password.</p>
+        <div className="field">
+          <label>Email</label>
+          <input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" autoFocus />
+        </div>
+        {err && <p className="caption" style={{ color: 'var(--red)', marginTop: '.5rem' }}>{err}</p>}
+        <button className="btn btn-primary" style={{ marginTop: '1rem' }} disabled={busy || !email} onClick={submit}>
+          {busy ? 'Sending…' : 'Send reset link'}
+        </button>
+        <button className="btn btn-ghost" style={{ marginTop: '.5rem' }} onClick={() => { setMode('in'); setErr('') }}>Back to sign in</button>
       </Sheet>
     )
   }
@@ -413,6 +488,10 @@ function StaffLogin({ onClose }) {
         <label>Password</label>
         <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={mode === 'up' ? 'At least 6 characters' : ''} />
       </div>
+      {mode === 'in' && (
+        <button className="btn btn-ghost btn-sm" style={{ marginTop: '.4rem', width: 'auto', padding: '.2rem 0', justifyContent: 'flex-start', border: 'none', color: 'var(--brand-2)' }}
+          onClick={() => { setMode('reset'); setErr('') }}>Forgot password?</button>
+      )}
       {err && <p className="caption" style={{ color: 'var(--red)', marginTop: '.5rem' }}>{err}</p>}
       <button className="btn btn-primary" style={{ marginTop: '1rem' }}
         disabled={busy || !email || !password || (mode === 'up' && !name)} onClick={submit}>

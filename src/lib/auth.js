@@ -77,6 +77,23 @@ export async function signUpStaff({ name, email, password, requestedRole }) {
   return { data, error, needsConfirm }
 }
 
+// Email a password-reset link. The link returns to this same app; Supabase JS
+// then fires a 'PASSWORD_RECOVERY' auth event so we can show a set-new-password
+// screen. Requires this origin's URL in Supabase → Auth → Redirect URLs.
+export async function requestPasswordReset(email) {
+  if (!supabase) return { error: 'offline' }
+  const redirectTo = typeof window !== 'undefined' ? `${window.location.origin}/` : undefined
+  const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo })
+  return { error }
+}
+
+// Set a new password (used during a recovery session, or by a signed-in user).
+export async function updatePassword(password) {
+  if (!supabase) return { error: 'offline' }
+  const { error } = await supabase.auth.updateUser({ password })
+  return { error }
+}
+
 // After sign-out, drop back to a fresh anonymous customer session.
 export async function signOut() {
   if (!supabase) return
@@ -86,6 +103,6 @@ export async function signOut() {
 
 export function onAuthChange(cb) {
   if (!supabase) return () => {}
-  const { data } = supabase.auth.onAuthStateChange(() => cb())
+  const { data } = supabase.auth.onAuthStateChange((event, session) => cb(event, session))
   return () => data.subscription.unsubscribe()
 }
