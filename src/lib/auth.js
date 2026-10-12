@@ -77,6 +77,19 @@ export async function signUpStaff({ name, email, password, requestedRole }) {
   return { data, error, needsConfirm }
 }
 
+// Passwordless sign-in: email the user a one-tap magic link. Only existing
+// accounts get a link (shouldCreateUser:false) — staff are provisioned, not
+// self-created here. The link returns to this app and completes the session.
+export async function signInWithMagicLink(email) {
+  if (!supabase) return { error: 'offline' }
+  const emailRedirectTo = typeof window !== 'undefined' ? `${window.location.origin}/` : undefined
+  const { error } = await supabase.auth.signInWithOtp({
+    email,
+    options: { emailRedirectTo, shouldCreateUser: false },
+  })
+  return { error }
+}
+
 // Email a password-reset link. The link returns to this same app; Supabase JS
 // then fires a 'PASSWORD_RECOVERY' auth event so we can show a set-new-password
 // screen. Requires this origin's URL in Supabase → Auth → Redirect URLs.

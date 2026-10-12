@@ -3,7 +3,7 @@ import { Routes, Route, NavLink, Navigate, useLocation, useNavigate } from 'reac
 import { Icon, Sheet, Avatar } from './components/ui.jsx'
 import { useStore, clearToast } from './data/store.js'
 import { supabaseEnabled } from './lib/supabase.js'
-import { signInStaff, signUpStaff, signOut, onAuthChange, requestPasswordReset, updatePassword } from './lib/auth.js'
+import { signInStaff, signUpStaff, signOut, onAuthChange, requestPasswordReset, updatePassword, signInWithMagicLink } from './lib/auth.js'
 import { getIdentity } from './data/api.js'
 import { CONFIG, ALLOWED_ROLES, LOGIN_ROLES, APP_ANON, CAN_CROSS_VIEW, OTHER_APPS, appForRole } from './appConfig.js'
 
@@ -387,6 +387,16 @@ function StaffLogin({ onClose }) {
 
   const rolesForSignup = VITE_APP === 'network' ? [['provider', 'spark', 'Provider']] : [['assessor', 'clipboard', 'Assessor']]
 
+  const sendMagic = async () => {
+    if (!email) { setErr('Enter your email first.'); return }
+    setBusy(true)
+    setErr('')
+    const { error } = await signInWithMagicLink(email)
+    setBusy(false)
+    if (error) setErr(typeof error === 'string' ? error : error.message)
+    else setDone('magic')
+  }
+
   const submit = async () => {
     setBusy(true)
     setErr('')
@@ -410,14 +420,16 @@ function StaffLogin({ onClose }) {
 
   if (done) {
     return (
-      <Sheet title={done === 'reset' ? 'Check your email' : 'Request sent'} onClose={onClose}>
+      <Sheet title={done === 'reset' || done === 'magic' ? 'Check your email' : 'Request sent'} onClose={onClose}>
         <div style={{ textAlign: 'center', padding: '.5rem 0 .3rem' }}>
           <div className="avatar" style={{ background: 'var(--go)', margin: '0 auto .6rem', width: 48, height: 48 }}>
             <Icon name="check" size={24} style={{ color: '#fff' }} />
           </div>
-          <div className="subtitle">{done === 'reset' ? 'Reset link sent' : 'Account created'}</div>
+          <div className="subtitle">{done === 'reset' ? 'Reset link sent' : done === 'magic' ? 'Sign-in link sent' : 'Account created'}</div>
           <p className="body" style={{ marginTop: '.4rem' }}>
-            {done === 'reset'
+            {done === 'magic'
+              ? `If an account exists for ${email || 'that address'}, a one-tap sign-in link is on its way. Open it on this device and you're in — no password needed.`
+              : done === 'reset'
               ? `If an account exists for ${email || 'that address'}, a password-reset link is on its way. Open it on this device to set a new password.`
               : done === 'confirm'
                 ? 'Check your email to confirm the address, then an admin will grant your access.'
@@ -497,6 +509,20 @@ function StaffLogin({ onClose }) {
         disabled={busy || !email || !password || (mode === 'up' && !name)} onClick={submit}>
         {busy ? 'Please wait…' : mode === 'in' ? 'Sign in' : 'Create account'}
       </button>
+
+      {mode === 'in' && (
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '.6rem', margin: '.9rem 0 .2rem' }}>
+            <span style={{ flex: 1, height: 1, background: 'var(--line)' }} />
+            <span className="caption" style={{ margin: 0 }}>or</span>
+            <span style={{ flex: 1, height: 1, background: 'var(--line)' }} />
+          </div>
+          <button className="btn btn-ghost" style={{ marginTop: '.3rem' }} disabled={busy || !email} onClick={sendMagic}>
+            <Icon name="send" size={16} /> Email me a one-tap sign-in link
+          </button>
+          <p className="caption" style={{ marginTop: '.4rem', textAlign: 'center' }}>No password to remember — just open the link on this device.</p>
+        </>
+      )}
     </Sheet>
   )
 }

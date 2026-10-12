@@ -9,4 +9,11 @@ const anon = import.meta.env.VITE_SUPABASE_ANON_KEY
 // set (e.g. local design work), so nothing breaks before the backend is wired.
 export const supabaseEnabled = Boolean(url && anon)
 
-export const supabase = supabaseEnabled ? createClient(url, anon) : null
+// persistSession + autoRefreshToken keep you signed in on your own device for
+// weeks (no re-login each visit); detectSessionInUrl lets magic-link and
+// password-reset links complete when opened.
+export const supabase = supabaseEnabled
+  ? createClient(url, anon, {
+      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+    })
+  : null
